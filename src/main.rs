@@ -72,13 +72,13 @@ fn load_data(dictionary_file_path: &str, dataset_file_path: &str) -> (HashSet<St
 
 fn tokenize_data<'a>(dataset: &str, dictionary: &'a HashSet<String>) -> (Vec<String>, Vec<&'a String>) {
     let dataset_words = utils::tokenizer::tokenizer(dataset);
-    let dictionary_words = dictionary.iter().collect::<Vec<&'a String>>();
+    let dictionary_words = dictionary.par_iter().collect::<Vec<&'a String>>();
     (dataset_words, dictionary_words)
 }
 
 fn check_unknown_words(dataset_words: &Vec<String>, checker: &dyn SpellChecker) -> (HashSet<String>, std::time::Duration) {
     let start = Instant::now();
-    let unknown_words = dataset_words.iter()
+    let unknown_words = dataset_words.par_iter()
         .filter(|word| !checker.check_word(word.as_str()))
         .cloned()
         .collect::<HashSet<String>>();
@@ -87,7 +87,7 @@ fn check_unknown_words(dataset_words: &Vec<String>, checker: &dyn SpellChecker) 
 }
 
 fn filter_unknown_words(unknown_words: &HashSet<String>) -> HashSet<&String> {
-    unknown_words.iter()
+    unknown_words.par_iter()
         .filter(|word| !word.chars().any(|c| c.is_digit(10)))
         .collect::<HashSet<&String>>()
 }
@@ -97,7 +97,7 @@ fn suggest_corrections(unknown_words_set: &HashSet<&String>, checker: &dyn Spell
     let unknown_words_vec: Vec<_> = unknown_words_set.clone().into_iter().collect();
     let corrections: Vec<_> = unknown_words_vec.par_chunks(chunk_size)
         .map(|chunk| {
-            chunk.iter()
+            chunk.par_iter()
                 .map(|word| checker.suggest_correction(word.as_str()))
                 .collect::<Vec<_>>()
         })
@@ -108,13 +108,18 @@ fn suggest_corrections(unknown_words_set: &HashSet<&String>, checker: &dyn Spell
 }
 
 fn print_unknown_words_info(unknown_words: &HashSet<String>, dictionary_words: &Vec<&String>, dataset_words: &Vec<String>, duration: std::time::Duration, name: &str) {
+
+    info!("__________________________________________________________________________");
     info!("Unknown words {}: {:?}", name, unknown_words.len());
     info!("Dictionary words: {}", dictionary_words.len());
     info!("Dataset words: {}", dataset_words.len());
     info!("Time elapsed in checking unknown words using {}: {:?}", name, duration);
+    info!("__________________________________________________________________________");
 }
 
 fn print_correction_info(unknown_words_set: &HashSet<&String>, duration: std::time::Duration, corrections: &Vec<Vec<String>>, name: &str) {
+
+    info!("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
     info!("set of unknown words: {:?}", unknown_words_set.len());
     info!("Time elapsed in checking unknown words using {} correction: {:?}", name, duration);
 
@@ -122,6 +127,7 @@ fn print_correction_info(unknown_words_set: &HashSet<&String>, duration: std::ti
 
     info!("{} corrections: {:?}", name, non_empty_corrections.len());
     debug!("{} corrections: {:?}", name, non_empty_corrections);
+    info!("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
 }
 
 
