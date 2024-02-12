@@ -4,6 +4,7 @@ use std::time::Instant;
 use crate::spell_check::precomputed_levenshtein_checker::PrecomputedLevenshteinChecker;
 use crate::spell_check::wagner_fischer::WagnerFischerChecker;
 use log::{info, debug};
+use rustacuda::prelude::*;
 
 extern crate rayon;
 
@@ -28,11 +29,20 @@ mod spell_check {
     pub mod wagner_fischer;
     pub mod soundex_checker;
     // pub mod levenshtein_checker_bk_map;
-
 }
 
 pub fn main() {
     env_logger::init();
+
+    // Initialize the CUDA API
+    rustacuda::init(CudaFlags::empty()).expect("Could not initialize CUDA");
+
+    // Get the first device
+    let device = Device::get_device(0).expect("Could not get device");
+
+    // Create a context associated to this device
+    let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
+        .expect("Could not create CUDA context");
 
     let normal_dictionary_file_path = "data/dictionary/dict.txt";
 
@@ -108,7 +118,6 @@ fn suggest_corrections(unknown_words_set: &HashSet<&String>, checker: &dyn Spell
 }
 
 fn print_unknown_words_info(unknown_words: &HashSet<String>, dictionary_words: &Vec<&String>, dataset_words: &Vec<String>, duration: std::time::Duration, name: &str) {
-
     info!("__________________________________________________________________________");
     info!("Unknown words {}: {:?}", name, unknown_words.len());
     info!("Dictionary words: {}", dictionary_words.len());
@@ -118,7 +127,6 @@ fn print_unknown_words_info(unknown_words: &HashSet<String>, dictionary_words: &
 }
 
 fn print_correction_info(unknown_words_set: &HashSet<&String>, duration: std::time::Duration, corrections: &Vec<Vec<String>>, name: &str) {
-
     info!("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
     info!("set of unknown words: {:?}", unknown_words_set.len());
     info!("Time elapsed in checking unknown words using {} correction: {:?}", name, duration);
@@ -153,3 +161,33 @@ fn print_correction_info(unknown_words_set: &HashSet<&String>, duration: std::ti
 // println!("Precomputed Levenshtein corrections: {:?}", fix_precomputed_levenshtein_corrections.len());
 // println!("Precomputed Levenshtein corrections: {:?}", fix_precomputed_levenshtein_corrections);
 
+// fn suggest_corrections_cuda(unknown_words_set: &HashSet<&String>, checker: &dyn SpellChecker, chunk_size: usize) -> (Vec<Vec<String>>, std::time::Duration) {
+//     let start = Instant::now();
+//
+//     // Convert the unknown_words_set to a Vec and allocate memory on the GPU
+//     let unknown_words_vec: Vec<_> = unknown_words_set.clone().into_iter().collect();
+//     let mut device_unknown_words = DeviceBuffer::from_slice(&unknown_words_vec).unwrap();
+//
+//     // Allocate memory on the GPU for the corrections
+//     let mut device_corrections = DeviceBuffer::zeros(unknown_words_vec.len()).unwrap();
+//
+//     // Define the grid and block size for the CUDA kernel
+//     let grid_size = (unknown_words_vec.len() + 255) / 256;
+//     let block_size = 256;
+//
+//     // Launch the CUDA kernel
+//     unsafe {
+//         suggest_corrections_kernel<<<grid_size, block_size>>>(
+//             device_unknown_words.as_device_ptr(),
+//             device_corrections.as_device_ptr(),
+//             unknown_words_vec.len()
+//         );
+//     }
+//
+//     // Copy the corrections from the GPU to the CPU
+//     let mut corrections = vec![0; unknown_words_vec.len()];
+//     device_corrections.copy_to(&mut corrections).unwrap();
+//
+//     let duration = start.elapsed();
+//     (corrections, duration)
+// }
