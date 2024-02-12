@@ -87,7 +87,7 @@ fn check_unknown_words(dataset_words: &Vec<String>, checker: &dyn SpellChecker) 
 }
 
 fn filter_unknown_words(unknown_words: &HashSet<String>) -> HashSet<&String> {
-    unknown_words.par_iter()
+    unknown_words.iter()
         .filter(|word| !word.chars().any(|c| c.is_digit(10)))
         .collect::<HashSet<&String>>()
 }
