@@ -19,8 +19,8 @@ impl SpellChecker for SoundexChecker {
         true
     }
 
-    fn suggest_correction(&self, word: &str) -> Option<String> {
+    fn suggest_correction(&self, word: &str) -> Vec<String> {
         // Soundex suggestion logic
-        Some(word.to_string())  // Placeholder
+        vec![word.to_string()]  // Placeholder
     }
 }

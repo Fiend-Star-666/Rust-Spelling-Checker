@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use crate::spell_check::spell_checker::SpellChecker;
 use std::time::Instant;
-
+use crate::spell_check::precomputed_levenshtein_checker::PrecomputedLevenshteinChecker;
 extern crate rayon;
 
 use rayon::prelude::*;
@@ -20,9 +20,8 @@ mod spell_check {
     pub mod spell_checker;
     pub mod hash_map_look_up;
     pub mod levenshtein_checker;
-
+    pub mod precomputed_levenshtein_checker;
     // pub mod levenshtein_checker_bk_map;
-
     pub mod soundex_checker;
 }
 
@@ -31,7 +30,7 @@ pub fn main() {
 
     let dataset_file_path = "data/dataset/book.txt";
 
-    //let dictionary_file_path = "data/dictionary/dict.txt";
+    // let dictionary_file_path = "data/dictionary/dict.txt";
 
     let dictionary_file_path = "data/dictionary/insane-dict.txt";
 
@@ -71,28 +70,31 @@ pub fn main() {
     println!("Time elapsed in checking unknown words using hashMap: {:?}", duration_hash_look_up);
     println!("Time elapsed in checking unknown words using levenshtein: {:?}", duration_levenshtein_look_up);
 
-
-
     //create a set of unknown words
-    let unknown_words_set = unknown_words_levenshtein.iter().collect::<std::collections::HashSet<&String>>();
+    let unknown_words_set = unknown_words_levenshtein.iter().collect::<HashSet<&String>>();
     println!("set of unknown words: {:?}", unknown_words_set.len());
 
     //strip the set of numbers
     let unknown_words_set = unknown_words_set.iter()
         .filter(|word| !word.chars().any(|c| c.is_digit(10)))
         .cloned()
-        .collect::<std::collections::HashSet<&String>>();
+        .collect::<HashSet<&String>>();
 
     println!("set of unknown words: {:?}", unknown_words_set.len());
 
     let duration_leven_correction = Instant::now(); // Start timer
 
-    let fix_levenshtein_corrections = unknown_words_set.par_iter()
-        .map(|word| {
-            let correction = levenshtein_checker.suggest_correction(word.as_str());
-            correction
+    let chunk_size = unknown_words_set.len() / rayon::current_num_threads();
+    let unknown_words_vec: Vec<_> = unknown_words_set.clone().into_iter().collect();
+
+    let fix_levenshtein_corrections: Vec<_> = unknown_words_vec.par_chunks(chunk_size)
+        .map(|chunk| {
+            chunk.iter()
+                .map(|word| levenshtein_checker.suggest_correction(word.as_str()))
+                .collect::<Vec<_>>()
         })
-        .collect::<Vec<Option<String>>>();
+        .flatten()
+        .collect();
 
     let duration_leven_correction = duration_leven_correction.elapsed(); // End timer
 
@@ -101,5 +103,26 @@ pub fn main() {
     println!("Levenshtein corrections: {:?}", fix_levenshtein_corrections.len());
     println!("Levenshtein corrections: {:?}", fix_levenshtein_corrections);
 
+    // let duration_precomputed_levenshtein = Instant::now(); // Start timer
+    //
+    // let dictionary_vec: Vec<_> = dictionary.into_iter().collect();
+    // let precomputed_levenshtein_checker = PrecomputedLevenshteinChecker::new(dictionary_vec.clone());
+    //
+    // let unknown_words_vec: Vec<_> = unknown_words_set.into_iter().collect();
+    //
+    // let fix_precomputed_levenshtein_corrections: Vec<_> = unknown_words_vec.par_chunks(chunk_size)
+    //     .map(|chunk| {
+    //         chunk.iter()
+    //             .map(|word| precomputed_levenshtein_checker.suggest_correction(word.as_str()))
+    //             .collect::<Vec<_>>()
+    //     })
+    //     .flatten()
+    //     .collect();
+    //
+    // let duration_precomputed_levenshtein_completed = duration_precomputed_levenshtein.elapsed(); // End timer
+    //
+    // println!("Time elapsed in checking unknown words using precomputed levenshtein: {:?}", duration_precomputed_levenshtein_completed);
+    // println!("Precomputed Levenshtein corrections: {:?}", fix_precomputed_levenshtein_corrections.len());
+    // println!("Precomputed Levenshtein corrections: {:?}", fix_precomputed_levenshtein_corrections);
 }
 

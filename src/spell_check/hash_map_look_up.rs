@@ -16,15 +16,8 @@ impl SpellChecker for HashMapLookup {
         self.dictionary.contains(word)
     }
 
-    fn suggest_correction(&self, _word: &str) -> Option<String> {
+    fn suggest_correction(&self, _word: &str) -> Vec<String> {
         // Suggestion logic can be implemented as needed
-        None
+        vec![]
     }
 }
-
-
-
-// let unknown_words = dataset_words.iter()
-// .filter(|word| !dictionary.contains(word.as_str()))
-// .cloned()
-// .collect::<Vec<String>>();
