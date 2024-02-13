@@ -1,5 +1,3 @@
-
-use rustacuda::prelude::*;
 use std::error::Error;
 use std::ffi::CString;
 use std::collections::HashSet;
@@ -8,7 +6,10 @@ use std::time::Instant;
 use crate::spell_check::precomputed_levenshtein_checker::PrecomputedLevenshteinChecker;
 use crate::spell_check::wagner_fischer::WagnerFischerChecker;
 use log::{info, debug};
-use rustacuda::prelude::*;
+use cudarc::*;
+use cudarc::driver::{CudaDevice, DriverError};
+use cudarc::nvrtc::Ptx;
+
 
 extern crate rayon;
 
@@ -34,23 +35,16 @@ mod spell_check {
     // pub mod levenshtein_checker_bk_map;
 }
 
-pub fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), DriverError> {
     env_logger::init();
 
-    // Initialize the CUDA API
-    rustacuda::init(CudaFlags::empty()).expect("Could not initialize CUDA");
+    // Initialize the CUDA API with cudarc
+    let dev = CudaDevice::new(0)?;
 
-    // Get the first device
-    let device = Device::get_device(0).expect("Could not get device");
+    dev.load_ptx(Ptx::from_file("src/cuda/suggest_corrections_kernel.ptx"), "cuda", &["suggest_corrections_kernel."])?;
 
-    // Create a context associated with this device
-    let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
-        .expect("Could not create CUDA context");
+    let function = dev.get_func("cuda", "suggest_corrections_kernel").unwrap();
 
-    // Load the CUDA module
-    let ptx_content = include_str!("../src/cuda/suggest_corrections_kernel.ptx");
-    let ptx = CString::new(ptx_content)?;
-    let module = Module::load_from_string(&ptx)?;
 
     let normal_dictionary_file_path = "data/dictionary/dict.txt";
     let dataset_file_path = "data/dataset/book.txt";

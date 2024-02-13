@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_int};
 use std::sync::Mutex;
 use rayon::prelude::*;
-use rustacuda::memory::{CopyDestination, DeviceBuffer};
+use cudarc::*;
 use std::ffi::CString;
 
 extern "C" {
@@ -80,28 +80,21 @@ impl SpellChecker for WagnerFischerChecker {
             .filter(|&(_, dist)| dist <= 2)  // You can adjust the threshold
             .collect();
 
-        // Convert the suggestions to CStrings
+        // Convert the suggestions to Vec<CString>
         let c_suggestions: Vec<CString> = suggestions.iter()
             .map(|(word, _)| CString::new(word.as_str()).unwrap())
             .collect();
 
-        // Convert the CStrings to raw pointers
+        // Convert the Vec<CString> to Vec<*const c_char>
         let p_suggestions: Vec<*const c_char> = c_suggestions.iter()
-            .map(|c_string| c_string.as_ptr())
+            .map(|cstr| cstr.as_ptr())
             .collect();
 
-        // Convert the suggestions to Vec<i8>
-        let i_suggestions: Vec<Vec<i8>> = suggestions.iter()
-            .map(|(word, _)| word.as_bytes().iter().map(|&b| b as i8).collect())
-            .collect();
-
-        // Create a DeviceBuffer from each Vec<i8>
-        let mut device_suggestions: Vec<DeviceBuffer<i8>> = i_suggestions.iter()
-            .map(|i_suggestion| DeviceBuffer::from_slice(i_suggestion).unwrap())
-            .collect();
+        // Convert the Vec<*const c_char> to DeviceBuffer<*const c_char>
+        let device_suggestions = rustacuda::memory::DeviceBuffer::from_slice(&p_suggestions)?;
 
         // Allocate memory on the GPU for the corrections
-        let mut device_corrections = unsafe { DeviceBuffer::zeroed(suggestions.len()) }.unwrap();
+        let mut device_corrections = rustacuda::memory::DeviceBuffer::from_slice(&vec![0; suggestions.len()])?;
 
         // Define the grid and block size for the CUDA kernel
         let grid_size = (suggestions.len() + 255) / 256;
@@ -111,9 +104,8 @@ impl SpellChecker for WagnerFischerChecker {
         unsafe {
             suggest_corrections_kernel(
                 device_suggestions.as_ptr() as *const *const c_char,
-                device_corrections.as_device_ptr().as_raw() as *mut *mut c_char,
-                suggestions.len() as c_int,
-            );
+                device_corrections.as_device_ptr().as_raw_mut() as *mut *mut c_char,
+                suggestions.len() as c_int);
         }
 
         // Copy the corrections from the GPU to the CPU
@@ -132,6 +124,7 @@ impl SpellChecker for WagnerFischerChecker {
             .map(|((word, _), _)| word.clone())
             .collect::<Vec<String>>()
     }
+
 }
 
 //CPU
