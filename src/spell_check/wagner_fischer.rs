@@ -3,7 +3,8 @@ use std::collections::{HashMap, HashSet};
 use std::ffi::{c_char, c_int};
 use std::sync::Mutex;
 use rayon::prelude::*;
-use rustacuda::memory::DeviceBuffer;
+use rustacuda::memory::{CopyDestination, DeviceBuffer};
+use std::ffi::CString;
 
 extern "C" {
     fn suggest_corrections_kernel(
@@ -79,11 +80,28 @@ impl SpellChecker for WagnerFischerChecker {
             .filter(|&(_, dist)| dist <= 2)  // You can adjust the threshold
             .collect();
 
-        // Convert the suggestions to a Vec and allocate memory on the GPU
-        let mut device_suggestions = DeviceBuffer::from_slice(&suggestions).unwrap();
+        // Convert the suggestions to CStrings
+        let c_suggestions: Vec<CString> = suggestions.iter()
+            .map(|(word, _)| CString::new(word.as_str()).unwrap())
+            .collect();
+
+        // Convert the CStrings to raw pointers
+        let p_suggestions: Vec<*const c_char> = c_suggestions.iter()
+            .map(|c_string| c_string.as_ptr())
+            .collect();
+
+        // Convert the suggestions to Vec<i8>
+        let i_suggestions: Vec<Vec<i8>> = suggestions.iter()
+            .map(|(word, _)| word.as_bytes().iter().map(|&b| b as i8).collect())
+            .collect();
+
+        // Create a DeviceBuffer from each Vec<i8>
+        let mut device_suggestions: Vec<DeviceBuffer<i8>> = i_suggestions.iter()
+            .map(|i_suggestion| DeviceBuffer::from_slice(i_suggestion).unwrap())
+            .collect();
 
         // Allocate memory on the GPU for the corrections
-        let mut device_corrections = DeviceBuffer::zeros(suggestions.len()).unwrap();
+        let mut device_corrections = unsafe { DeviceBuffer::zeroed(suggestions.len()) }.unwrap();
 
         // Define the grid and block size for the CUDA kernel
         let grid_size = (suggestions.len() + 255) / 256;
@@ -91,10 +109,10 @@ impl SpellChecker for WagnerFischerChecker {
 
         // Launch the CUDA kernel
         unsafe {
-            suggest_corrections_kernel<<<grid_size, block_size>>>(
-                device_suggestions.as_device_ptr(),
-                device_corrections.as_device_ptr(),
-                suggestions.len()
+            suggest_corrections_kernel(
+                device_suggestions.as_ptr() as *const *const c_char,
+                device_corrections.as_device_ptr().as_raw() as *mut *mut c_char,
+                suggestions.len() as c_int,
             );
         }
 
@@ -102,14 +120,17 @@ impl SpellChecker for WagnerFischerChecker {
         let mut corrections = vec![0; suggestions.len()];
         device_corrections.copy_to(&mut corrections).unwrap();
 
+        // Combine the words and their corrections into a vector of tuples
+        let mut corrections: Vec<_> = suggestions.into_iter().zip(corrections.into_iter()).collect();
+
         // Sort the corrections by their distance
         corrections.sort_by_key(|&(_, dist)| dist);
 
         // Take the top 3 corrections
         corrections.into_iter()
             .take(3)
-            .map(|(word, _)| word.clone())
-            .collect()
+            .map(|((word, _), _)| word.clone())
+            .collect::<Vec<String>>()
     }
 }
 

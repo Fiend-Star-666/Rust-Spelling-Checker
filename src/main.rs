@@ -1,3 +1,7 @@
+
+use rustacuda::prelude::*;
+use std::error::Error;
+use std::ffi::CString;
 use std::collections::HashSet;
 use crate::spell_check::spell_checker::SpellChecker;
 use std::time::Instant;
@@ -18,7 +22,6 @@ mod utils {
 }
 
 mod cuda {
-    // pub mod levenshtein_corrections_kernel;
 }
 
 mod spell_check {
@@ -31,7 +34,7 @@ mod spell_check {
     // pub mod levenshtein_checker_bk_map;
 }
 
-pub fn main() {
+pub fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
 
     // Initialize the CUDA API
@@ -40,12 +43,16 @@ pub fn main() {
     // Get the first device
     let device = Device::get_device(0).expect("Could not get device");
 
-    // Create a context associated to this device
+    // Create a context associated with this device
     let _context = Context::create_and_push(ContextFlags::MAP_HOST | ContextFlags::SCHED_AUTO, device)
         .expect("Could not create CUDA context");
 
-    let normal_dictionary_file_path = "data/dictionary/dict.txt";
+    // Load the CUDA module
+    let ptx_content = include_str!("../src/cuda/suggest_corrections_kernel.ptx");
+    let ptx = CString::new(ptx_content)?;
+    let module = Module::load_from_string(&ptx)?;
 
+    let normal_dictionary_file_path = "data/dictionary/dict.txt";
     let dataset_file_path = "data/dataset/book.txt";
     let dictionary_file_path = "data/dictionary/insane-dict.txt";
 
@@ -72,6 +79,7 @@ pub fn main() {
 
         print_correction_info(&unknown_words_set, duration_correction, &corrections, name);
     }
+    Ok(())
 }
 
 fn load_data(dictionary_file_path: &str, dataset_file_path: &str) -> (HashSet<String>, String) {
