@@ -1,10 +1,10 @@
 use crate::spell_check::spell_checker::SpellChecker;
+use cudarc::*;
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::ffi::CString;
 use std::ffi::{c_char, c_int};
 use std::sync::Mutex;
-use rayon::prelude::*;
-use cudarc::*;
-use std::ffi::CString;
 
 extern "C" {
     fn suggest_corrections_kernel(
@@ -26,7 +26,6 @@ impl WagnerFischerChecker {
             cache: Mutex::new(HashMap::new()),
         }
     }
-
 
     fn wagner_fischer(&self, s1: &str, s2: &str) -> usize {
         let mut cache = self.cache.lock().unwrap();
@@ -54,9 +53,9 @@ impl WagnerFischerChecker {
                     matrix[i + 1][j] + 1,
                     matrix[i][j] + cost,
                 ]
-                    .iter()
-                    .min()
-                    .unwrap();
+                .iter()
+                .min()
+                .unwrap();
             }
         }
 
@@ -75,56 +74,61 @@ impl SpellChecker for WagnerFischerChecker {
     }
 
     fn suggest_correction(&self, word: &str) -> Vec<String> {
-        let mut suggestions: Vec<_> = self.dictionary.par_iter()
+        let mut suggestions: Vec<_> = self
+            .dictionary
+            .par_iter()
             .map(|dict_word| (dict_word, self.wagner_fischer(word, dict_word)))
-            .filter(|&(_, dist)| dist <= 2)  // You can adjust the threshold
+            .filter(|&(_, dist)| dist <= 2) // You can adjust the threshold
             .collect();
 
         // Convert the suggestions to Vec<CString>
-        let c_suggestions: Vec<CString> = suggestions.iter()
+        let c_suggestions: Vec<CString> = suggestions
+            .iter()
             .map(|(word, _)| CString::new(word.as_str()).unwrap())
             .collect();
 
         // Convert the Vec<CString> to Vec<*const c_char>
-        let p_suggestions: Vec<*const c_char> = c_suggestions.iter()
-            .map(|cstr| cstr.as_ptr())
-            .collect();
+        let p_suggestions: Vec<*const c_char> =
+            c_suggestions.iter().map(|cstr| cstr.as_ptr()).collect();
 
         // Convert the Vec<*const c_char> to DeviceBuffer<*const c_char>
-        let device_suggestions = rustacuda::memory::DeviceBuffer::from_slice(&p_suggestions)?;
-
-        // Allocate memory on the GPU for the corrections
-        let mut device_corrections = rustacuda::memory::DeviceBuffer::from_slice(&vec![0; suggestions.len()])?;
+        // let device_suggestions = rustacuda::memory::DeviceBuffer::from_slice(&p_suggestions)?;
+        //
+        // // Allocate memory on the GPU for the corrections
+        // let mut device_corrections = rustacuda::memory::DeviceBuffer::from_slice(&vec![0; suggestions.len()])?;
 
         // Define the grid and block size for the CUDA kernel
         let grid_size = (suggestions.len() + 255) / 256;
         let block_size = 256;
 
         // Launch the CUDA kernel
-        unsafe {
-            suggest_corrections_kernel(
-                device_suggestions.as_ptr() as *const *const c_char,
-                device_corrections.as_device_ptr().as_raw_mut() as *mut *mut c_char,
-                suggestions.len() as c_int);
-        }
+        // unsafe {
+        //     suggest_corrections_kernel(
+        //         device_suggestions.as_ptr() as *const *const c_char,
+        //         device_corrections.as_device_ptr().as_raw_mut() as *mut *mut c_char,
+        //         suggestions.len() as c_int);
+        // }
 
         // Copy the corrections from the GPU to the CPU
         let mut corrections = vec![0; suggestions.len()];
-        device_corrections.copy_to(&mut corrections).unwrap();
+        // device_corrections.copy_to(&mut corrections).unwrap();
 
         // Combine the words and their corrections into a vector of tuples
-        let mut corrections: Vec<_> = suggestions.into_iter().zip(corrections.into_iter()).collect();
+        let mut corrections: Vec<_> = suggestions
+            .into_iter()
+            .zip(corrections.into_iter())
+            .collect();
 
         // Sort the corrections by their distance
         corrections.sort_by_key(|&(_, dist)| dist);
 
         // Take the top 3 corrections
-        corrections.into_iter()
+        corrections
+            .into_iter()
             .take(3)
             .map(|((word, _), _)| word.clone())
             .collect::<Vec<String>>()
     }
-
 }
 
 //CPU
@@ -144,4 +148,3 @@ impl SpellChecker for WagnerFischerChecker {
 //         .map(|(word, _)| word.clone())
 //         .collect()
 // }
-

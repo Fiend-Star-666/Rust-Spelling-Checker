@@ -7,7 +7,7 @@ pub struct SoundexChecker {
 impl SoundexChecker {
     pub fn new() -> Self {
         // Initialize Soundex-specific fields
-        SoundexChecker { }
+        SoundexChecker {}
     }
 
     // Soundex-specific methods
@@ -21,6 +21,6 @@ impl SpellChecker for SoundexChecker {
 
     fn suggest_correction(&self, word: &str) -> Vec<String> {
         // Soundex suggestion logic
-        vec![word.to_string()]  // Placeholder
+        vec![word.to_string()] // Placeholder
     }
 }

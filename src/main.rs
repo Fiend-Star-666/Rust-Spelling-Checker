@@ -1,15 +1,14 @@
-use std::error::Error;
-use std::ffi::CString;
-use std::collections::HashSet;
-use crate::spell_check::spell_checker::SpellChecker;
-use std::time::Instant;
 use crate::spell_check::precomputed_levenshtein_checker::PrecomputedLevenshteinChecker;
+use crate::spell_check::spell_checker::SpellChecker;
 use crate::spell_check::wagner_fischer::WagnerFischerChecker;
-use log::{info, debug};
-use cudarc::*;
 use cudarc::driver::{CudaDevice, DriverError};
 use cudarc::nvrtc::Ptx;
-
+use cudarc::*;
+use log::{debug, info};
+use std::collections::HashSet;
+use std::error::Error;
+use std::ffi::CString;
+use std::time::Instant;
 
 extern crate rayon;
 
@@ -17,21 +16,20 @@ use rayon::prelude::*;
 
 mod utils {
     pub mod io;
-    pub mod tokenizer;
-    pub mod read_dataset;
     pub mod load_dictionary;
+    pub mod read_dataset;
+    pub mod tokenizer;
 }
 
-mod cuda {
-}
+mod cuda {}
 
 mod spell_check {
-    pub mod spell_checker;
     pub mod hash_map_look_up;
     pub mod levenshtein_checker;
     pub mod precomputed_levenshtein_checker;
-    pub mod wagner_fischer;
     pub mod soundex_checker;
+    pub mod spell_checker;
+    pub mod wagner_fischer;
     // pub mod levenshtein_checker_bk_map;
 }
 
@@ -41,10 +39,13 @@ fn main() -> Result<(), DriverError> {
     // Initialize the CUDA API with cudarc
     let dev = CudaDevice::new(0)?;
 
-    dev.load_ptx(Ptx::from_file("src/cuda/suggest_corrections_kernel.ptx"), "cuda", &["suggest_corrections_kernel."])?;
+    dev.load_ptx(
+        Ptx::from_file("src/cuda/suggest_corrections_kernel.ptx"),
+        "cuda",
+        &["suggest_corrections_kernel."],
+    )?;
 
     let function = dev.get_func("cuda", "suggest_corrections_kernel").unwrap();
-
 
     let normal_dictionary_file_path = "data/dictionary/dict.txt";
     let dataset_file_path = "data/dataset/book.txt";
@@ -54,7 +55,9 @@ fn main() -> Result<(), DriverError> {
     let (dataset_words, dictionary_words) = tokenize_data(&dataset, &dictionary);
 
     let hashmap_lookup = spell_check::hash_map_look_up::HashMapLookup::new(dictionary.clone());
-    let levenshtein_checker = spell_check::levenshtein_checker::LevenshteinChecker::new(dictionary.clone().into_iter().collect());
+    let levenshtein_checker = spell_check::levenshtein_checker::LevenshteinChecker::new(
+        dictionary.clone().into_iter().collect(),
+    );
     let wagner_fischer_checker = WagnerFischerChecker::new(dictionary.clone());
 
     let checkers: Vec<(&dyn SpellChecker, &str)> = vec![
@@ -65,11 +68,18 @@ fn main() -> Result<(), DriverError> {
 
     for (checker, name) in checkers {
         let (unknown_words, duration_look_up) = check_unknown_words(&dataset_words, checker);
-        print_unknown_words_info(&unknown_words, &dictionary_words, &dataset_words, duration_look_up, name);
+        print_unknown_words_info(
+            &unknown_words,
+            &dictionary_words,
+            &dataset_words,
+            duration_look_up,
+            name,
+        );
 
         let unknown_words_set = filter_unknown_words(&unknown_words);
         let chunk_size = unknown_words_set.len() / rayon::current_num_threads();
-        let (corrections, duration_correction) = suggest_corrections(&unknown_words_set, checker, chunk_size);
+        let (corrections, duration_correction) =
+            suggest_corrections(&unknown_words_set, checker, chunk_size);
 
         print_correction_info(&unknown_words_set, duration_correction, &corrections, name);
     }
@@ -82,15 +92,22 @@ fn load_data(dictionary_file_path: &str, dataset_file_path: &str) -> (HashSet<St
     (dictionary, dataset)
 }
 
-fn tokenize_data<'a>(dataset: &str, dictionary: &'a HashSet<String>) -> (Vec<String>, Vec<&'a String>) {
+fn tokenize_data<'a>(
+    dataset: &str,
+    dictionary: &'a HashSet<String>,
+) -> (Vec<String>, Vec<&'a String>) {
     let dataset_words = utils::tokenizer::tokenizer(dataset);
     let dictionary_words = dictionary.par_iter().collect::<Vec<&'a String>>();
     (dataset_words, dictionary_words)
 }
 
-fn check_unknown_words(dataset_words: &Vec<String>, checker: &dyn SpellChecker) -> (HashSet<String>, std::time::Duration) {
+fn check_unknown_words(
+    dataset_words: &Vec<String>,
+    checker: &dyn SpellChecker,
+) -> (HashSet<String>, std::time::Duration) {
     let start = Instant::now();
-    let unknown_words = dataset_words.par_iter()
+    let unknown_words = dataset_words
+        .par_iter()
         .filter(|word| !checker.check_word(word.as_str()))
         .cloned()
         .collect::<HashSet<String>>();
@@ -99,17 +116,24 @@ fn check_unknown_words(dataset_words: &Vec<String>, checker: &dyn SpellChecker) 
 }
 
 fn filter_unknown_words(unknown_words: &HashSet<String>) -> HashSet<&String> {
-    unknown_words.iter()
+    unknown_words
+        .iter()
         .filter(|word| !word.chars().any(|c| c.is_digit(10)))
         .collect::<HashSet<&String>>()
 }
 
-fn suggest_corrections(unknown_words_set: &HashSet<&String>, checker: &dyn SpellChecker, chunk_size: usize) -> (Vec<Vec<String>>, std::time::Duration) {
+fn suggest_corrections(
+    unknown_words_set: &HashSet<&String>,
+    checker: &dyn SpellChecker,
+    chunk_size: usize,
+) -> (Vec<Vec<String>>, std::time::Duration) {
     let start = Instant::now();
     let unknown_words_vec: Vec<_> = unknown_words_set.clone().into_iter().collect();
-    let corrections: Vec<_> = unknown_words_vec.par_chunks(chunk_size)
+    let corrections: Vec<_> = unknown_words_vec
+        .par_chunks(chunk_size)
         .map(|chunk| {
-            chunk.par_iter()
+            chunk
+                .par_iter()
                 .map(|word| checker.suggest_correction(word.as_str()))
                 .collect::<Vec<_>>()
         })
@@ -119,19 +143,36 @@ fn suggest_corrections(unknown_words_set: &HashSet<&String>, checker: &dyn Spell
     (corrections, duration)
 }
 
-fn print_unknown_words_info(unknown_words: &HashSet<String>, dictionary_words: &Vec<&String>, dataset_words: &Vec<String>, duration: std::time::Duration, name: &str) {
+fn print_unknown_words_info(
+    unknown_words: &HashSet<String>,
+    dictionary_words: &Vec<&String>,
+    dataset_words: &Vec<String>,
+    duration: std::time::Duration,
+    name: &str,
+) {
     info!("__________________________________________________________________________");
     info!("Unknown words {}: {:?}", name, unknown_words.len());
     info!("Dictionary words: {}", dictionary_words.len());
     info!("Dataset words: {}", dataset_words.len());
-    info!("Time elapsed in checking unknown words using {}: {:?}", name, duration);
+    info!(
+        "Time elapsed in checking unknown words using {}: {:?}",
+        name, duration
+    );
     info!("__________________________________________________________________________");
 }
 
-fn print_correction_info(unknown_words_set: &HashSet<&String>, duration: std::time::Duration, corrections: &Vec<Vec<String>>, name: &str) {
+fn print_correction_info(
+    unknown_words_set: &HashSet<&String>,
+    duration: std::time::Duration,
+    corrections: &Vec<Vec<String>>,
+    name: &str,
+) {
     info!("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
     info!("set of unknown words: {:?}", unknown_words_set.len());
-    info!("Time elapsed in checking unknown words using {} correction: {:?}", name, duration);
+    info!(
+        "Time elapsed in checking unknown words using {} correction: {:?}",
+        name, duration
+    );
 
     let non_empty_corrections: Vec<_> = corrections.iter().filter(|c| !c.is_empty()).collect();
 
@@ -139,7 +180,6 @@ fn print_correction_info(unknown_words_set: &HashSet<&String>, duration: std::ti
     debug!("{} corrections: {:?}", name, non_empty_corrections);
     info!("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
 }
-
 
 // let duration_precomputed_levenshtein = Instant::now(); // Start timer
 //

@@ -1,5 +1,5 @@
-use std::collections::HashSet;
 use crate::spell_check::spell_checker::SpellChecker;
+use std::collections::HashSet;
 
 pub struct HashMapLookup {
     dictionary: HashSet<String>,

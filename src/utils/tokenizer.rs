@@ -88,4 +88,3 @@ pub fn tokenizer(text: &str) -> Vec<String> {
         .map(|mat| mat.as_str().to_lowercase())
         .collect()
 }
-
