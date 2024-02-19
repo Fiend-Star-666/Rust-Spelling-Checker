@@ -1,3 +1,18 @@
+Developed a sophisticated spelling checker in Rust, integrating advanced algorithms for unparalleled accuracy and efficiency.
+
+Key Features:
+- Levenshtein & Wagner-Fischer Algorithms: Utilizes these algorithms for precise error detection and distance calculation.
+- CUDA Integration: Leverages CUDA for accelerated computation, significantly enhancing performance.
+- Rayon for Parallel Computing: Implements Rayon, enabling efficient parallel data processing.
+- NLP for Context Awareness: Employs natural language processing to understand context, improving the accuracy of correction suggestions.
+- Soundex Algorithm: Uses Soundex for phonetic comparisons, catching errors missed by traditional spell checkers.
+
+This project is a showcase of my ability to blend multiple technologies — from CUDA and Rayon for performance to NLP and Soundex for accuracy — in creating a state-of-the-art spelling checker.
+
+
+** Its a work in progress
+
+
 Run command:
 run --package rust-spell-checker --bin rust-spell-checker --release
 
