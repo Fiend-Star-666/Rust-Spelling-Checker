@@ -12,6 +12,12 @@ This project is a showcase of my ability to blend multiple technologies — from
 
 ** Its a work in progress
 
+current performance:
+currently working on a cpu:
+takes in a 1.5M dataset of words finds the issues from a 650k words dictionary in about 35ms and gives 3 predictions for each error word in about 22 seconds for 4000 unique corrections which are duplicated many times over.
+
+trying to figure out a way to make it work on cuda
+
 
 Run command:
 run --package rust-spell-checker --bin rust-spell-checker --release
